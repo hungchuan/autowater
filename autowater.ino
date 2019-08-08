@@ -92,11 +92,11 @@ typedef enum {
 }spray_data_type;
 
 typedef enum {
-	D1S2,//1¤Ñ2¦¸
-	D1S1,//1¤Ñ1¦¸
-	D2S1,//2¤Ñ1¦¸
-	D3S1,//3¤Ñ1¦¸ 
-	D4S1,//4¤Ñ1¦¸ 
+	D1S2,//1ï¿½ï¿½2ï¿½ï¿½
+	D1S1,//1ï¿½ï¿½1ï¿½ï¿½
+	D2S1,//2ï¿½ï¿½1ï¿½ï¿½
+	D3S1,//3ï¿½ï¿½1ï¿½ï¿½ 
+	D4S1,//4ï¿½ï¿½1ï¿½ï¿½ 
 	D5S1,
 	D6S1,
 	D7S1,
@@ -158,7 +158,8 @@ String url3 = String("/macros/s/") + GScriptId + "/exec?read";
 String url_google = String("/macros/s/") + GScriptId + "/exec?";
 
 void setup() {
-  Serial.begin(_baudrate);	
+  Serial.begin(_baudrate);
+  Serial.flush();
   delay(1000);
   
   pinMode(ledPin, OUTPUT);	
@@ -237,6 +238,9 @@ void setup() {
       } 	  
   }
 */  
+
+  Serial.flush();
+
   if (true==wifi_connect())
   {
 	  get_time_form_google_sheet();
@@ -699,7 +703,7 @@ void upload_to_thingspeak() {
 	    
       	delay(10);
       	//
-      	// ?•ç?? ç«¯ä¼ºæ??¨å??³ç?è¨Šæ¯ï¼Œç?å¼ç¢¼?¯ä»¥å¯«åœ¨?™è£¡ï¼?
+      	// ?ï¿½ï¿½??ï¿½ç«¯ä¼ºï¿½??ï¿½ï¿½??ï¿½ï¿½?è¨Šæ¯ï¼Œï¿½?å¼ç¢¼?ï¿½ä»¥å¯«åœ¨?ï¿½è£¡ï¿?
       	//
 
 
@@ -906,6 +910,7 @@ void connect_to_google(int cell)
    char c_id[10];   
    char  *cPtr;
    int wLen,j,i;
+   HTTPSRedirect* client = nullptr;
    
 
    sprintf(c_id,"%u",SystemData.id);
@@ -913,14 +918,20 @@ void connect_to_google(int cell)
    
   if (false==WiFi_connected) return;
      
-  HTTPSRedirect client(httpsPort);
+  //HTTPSRedirect client(httpsPort);
+  // Use HTTPSRedirect class to create a new TLS connection
+  client = new HTTPSRedirect(httpsPort);
+  client->setInsecure();
+  client->setPrintResponseBody(true);
+  client->setContentTypeHeader("application/json");  
   
   Serial.print("Connecting to ");
   Serial.println(host_google);
 
   bool flag = false;
   for ( i=0; i<5; i++){
-    int retval = client.connect(host_google, httpsPort);
+    //int retval = client.connect(host_google, httpsPort);
+	int retval = client->connect(host_google, httpsPort);
     if (retval == 1) {
        flag = true;
        break;
@@ -928,22 +939,28 @@ void connect_to_google(int cell)
     else
       Serial.println("Connection failed. Retrying...");
   }
-  
-  Serial.flush();
+
+  Serial.print("flag = ");
+  Serial.println(flag);
+	
   if (!flag){
     Serial.print("Could not connect to server: ");
     Serial.println(host_google);
     Serial.println("Exiting...");
+	delete client;
+	client = nullptr;
     return;
   }
-  
+
+
   Serial.flush();
+/*
   if (client.verify(fingerprint, host_google)) {
     Serial.println("Certificate match.");
   } else {
     Serial.println("Certificate mis-match");
   }
-
+*/
   // Note: setup() must finish within approx. 1s, or the the watchdog timer
   // will reset the chip. Hence don't put too many requests in setup()
   // ref: https://github.com/esp8266/Arduino/issues/34
@@ -951,15 +968,17 @@ void connect_to_google(int cell)
   //Serial.print("Requesting URL: ");
   //Serial.println(url);
   
-  
+/* 
   if (!client.connected())
     client.connect(host_google, httpsPort);
+*/
 
   Serial.println("read form google sheet");
  
  
   switch (cell)
   {
+  
 	  case 0:	      
 	      Serial.print("s_id = ");Serial.println(s_id); 
 	      cmd = "cmd=read&id="+s_id;
@@ -967,7 +986,8 @@ void connect_to_google(int cell)
 		  //url_read = url_read + s_id;	  
           Serial.println(cmd_all); 
 		  
-		  client.printRedir(cmd_all, host_google, googleRedirHost);  
+		  //client.printRedir(cmd_all, host_google, googleRedirHost); 
+		  client->GET(cmd_all, host_google);
 		  cPtr = Getdata_form_google();
 		  wLen = strlen(cPtr);
 		  Serial.print("wLen = ");Serial.println(wLen); 
@@ -1059,7 +1079,14 @@ void connect_to_google(int cell)
 	  
 	      cmd = "cmd=time";
 	      cmd_all = url_google + cmd;	
-		  client.printRedir(cmd_all, host_google, googleRedirHost);  
+		  //client.printRedir(cmd_all, host_google, googleRedirHost);  
+		  if (client->GET(cmd_all, host_google))
+		  	{    
+		  	    Serial.print("client->GET OK ");
+			}  
+		  else{
+		  	    Serial.print("client->GET Error ");
+			}
 		  
           if ((sscanf(Getdata_form_google(), "%d-%d-%d %d:%d",&int_year,&int_month,&int_date,&int_hour,&int_minute))==5)
 	      {
@@ -1071,9 +1098,17 @@ void connect_to_google(int cell)
 
 		  }	
 		  
+		  delay(1000);
 	      cmd = "cmd=time&id=0";
 	      cmd_all = url_google + cmd;	
-		  client.printRedir(cmd_all, host_google, googleRedirHost);  
+		  //client->printRedir(cmd_all, host_google, googleRedirHost);  		  
+		  if (client->GET(cmd_all, host_google))
+			{	 
+				Serial.print("client->GET OK");
+			}  
+		  else{
+				Serial.print("client->GET Error");
+			}
           
 		  if ((sscanf(Getdata_form_google(), "%d",&intData))==1)
 	      {
@@ -1085,11 +1120,13 @@ void connect_to_google(int cell)
 				   save_flag = 1;
 			   }			   
 		  }
-		  
+		  		  
 	  break;
 
   }
-  
+
+ 	delete client;
+	client = nullptr;
 	
 }
 //====================================================================================================================
