@@ -77,6 +77,8 @@ int int_year,int_minute,int_second,int_month;
 char c_theDate[50],c_week[5],c_month[5];
 char inChar;
 bool WiFi_connected=true;
+bool sleep_flag=false;
+int current_time_temp=0;
 
 
 #define server_id        spray_data[0]
@@ -170,6 +172,7 @@ void setup() {
   get_time_period = 3;
   upload_period = 60;
   WiFi_connected=true;
+  sleep_flag=false;
 	
   e_system_status = system_init;
   power_status_counter = power_on_time;
@@ -433,16 +436,45 @@ void loop() {
     t_Timer_0.update();
 	uart_command();
 	remote_water();
-	sync_time();
+	sync_time(); //sync time from google every 10 minutes
 	upload_cloud();
 	EEP_save();
 
 	
 	if (int_date>31) return;
 	
-    Time_update();
+    Time_update(); // update time every 1 minute
 	
 	current_time = int_hour*100 + int_minute;	
+
+	if (current_time<600)
+	{
+	    read_from_google = 60;
+		get_time_period = 600;
+		upload_period = 60;
+		if (current_time_temp!=current_time)
+		{
+		    current_time_temp = current_time;
+			Serial.println(current_time);
+			Serial.println("sleep mode");
+		}
+        sleep_flag = true;
+	    return;
+	}
+
+	if (true == sleep_flag)
+	{
+		Serial.println("clean");
+		SystemData.date = 0;
+		SystemData.spraytime = 0;
+		SystemData.boot_count = 0;
+		EEPROM.put(eeAddress, SystemData);
+		EEPROM.commit();
+		Serial.println("wait 10 seconds then reboot");
+	    delay(10*1000);
+	    Serial.println("========reboot=======");
+		ESP.restart();			
+	}
 
 	//Serial.print("e_system_status = "); Serial.println(e_system_status); 
 	switch (e_system_status)
@@ -844,11 +876,18 @@ void uart_command()
   
     if (stringComplete) 
     {
+    
         stringComplete = false;
 		
+        if (inputString=="reboot")
+        {
+			Serial.println("========reboot=======");
+			ESP.restart();	
+        }		
+		
 		strcpy(command, inputString.c_str());
-        inputString = "";		
-
+        inputString = "";	
+	
 		switch (command[0])
 		{
 			case 'h':
@@ -886,7 +925,8 @@ void uart_command()
 					Serial.print("New HW ID = "); Serial.println(SystemData.id);
 				}
 					
-			break;
+			break;			
+
 			default:
 			    Serial.println("h : Spray_Enable_Pin = high");
 				Serial.println("l : Spray_Enable_Pin = low");
